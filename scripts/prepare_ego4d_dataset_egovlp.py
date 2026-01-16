@@ -1,14 +1,26 @@
-
-
 #! /usr/bin/env python
 
 """
 
 Prepare Ego4D NLQ splits for VSLNet when features are already clip-level (EgoVLP).
 
-- Writes train/val/test JSONs in VSLNet format (same as original script)
+Works even when EgoVLP features only partially overlap with Ego4D v2 annotations.
 
-- Copies (or symlinks) clip_uid.pt features directly into clip_feature_save_path
+
+
+Outputs:
+
+- <output_save_path>/train.json and val.json (VSLNet format, filtered to clips with features)
+
+- <clip_feature_save_path>/*.pt (symlinks or copies of clip-level features)
+
+- <clip_feature_save_path>/feature_shapes.json (clip_uid -> #frames)
+
+
+
+Note:
+
+- This script intentionally prepares only train+val (no test) for the safe baseline.
 
 """
 
@@ -17,8 +29,6 @@ Prepare Ego4D NLQ splits for VSLNet when features are already clip-level (EgoVLP
 import argparse
 
 import json
-
-import math
 
 import os
 
@@ -32,7 +42,9 @@ import tqdm
 
 
 
-from prepare_ego4d_dataset import reformat_data  # reuse existing formatter
+# reuse the official formatter from the original script
+
+from prepare_ego4d_dataset import reformat_data
 
 
 
@@ -40,15 +52,51 @@ from prepare_ego4d_dataset import reformat_data  # reuse existing formatter
 
 def main(args):
 
+    feat_root = Path(args["video_feature_read_path"]).expanduser().resolve()
+
+    out_json_root = Path(args["output_save_path"]).expanduser().resolve()
+
+    out_feat_root = Path(args["clip_feature_save_path"]).expanduser().resolve()
+
+
+
+    if not feat_root.exists():
+
+        raise FileNotFoundError(f"Feature directory not found: {feat_root}")
+
+
+
+    # Available feature files: clip_uid.pt
+
+    available = {p.stem for p in feat_root.glob("*.pt")}
+
+    print("Feature root:", feat_root)
+
+    print("Available feature files:", len(available))
+
+
+
+    os.makedirs(out_json_root, exist_ok=True)
+
+    os.makedirs(out_feat_root, exist_ok=True)
+
+
+
     all_clip_uids = set()
 
+    split_paths = {
+
+        "train": args["input_train_split"],
+
+        "val": args["input_val_split"],
+
+    }
 
 
-    # 1) write reformatted jsons
 
-    for split in ("train", "val"):
+    # 1) Write filtered train/val json
 
-        read_path = args[f"input_{split}_split"]
+    for split, read_path in split_paths.items():
 
         print(f"Reading [{split}]: {read_path}")
 
@@ -58,69 +106,71 @@ def main(args):
 
 
 
-        data_split, _clip_video_map = reformat_data(raw, split == "test")
+        data_split, _clip_video_map = reformat_data(raw, False)  # test=False for train/val
 
 
 
-        num_instances = sum(len(v["sentences"]) for v in data_split.values())
+        # Filter to only clips with available features
 
-        print(f"# {split}: {num_instances}")
+        filtered = {}
+
+        kept = 0
+
+        dropped = 0
+
+        for clip_uid, item in data_split.items():
+
+            if clip_uid in available:
+
+                filtered[clip_uid] = item
+
+                all_clip_uids.add(clip_uid)
+
+                kept += 1
+
+            else:
+
+                dropped += 1
 
 
 
-        os.makedirs(args["output_save_path"], exist_ok=True)
+        num_instances = sum(len(v["sentences"]) for v in filtered.values())
 
-        out_json = os.path.join(args["output_save_path"], f"{split}.json")
+        print(f"# {split} instances (after filter): {num_instances}")
+
+        print(f"[{split}] kept clips: {kept} | dropped (no features): {dropped}")
+
+
+
+        out_json = out_json_root / f"{split}.json"
 
         print(f"Writing [{split}]: {out_json}")
 
         with open(out_json, "w") as f:
 
-            json.dump(data_split, f)
+            json.dump(filtered, f)
 
 
 
-        # collect clip uids
-
-        for clip_uid in data_split.keys():
-
-            all_clip_uids.add(clip_uid)
-
-
-
-    # 2) copy/symlink clip-level features
-
-    os.makedirs(args["clip_feature_save_path"], exist_ok=True)
+    # 2) Link/copy features for kept clip_uids
 
     feature_sizes = {}
 
-
-
-    feat_root = Path(args["video_feature_read_path"])
-
-    out_root = Path(args["clip_feature_save_path"])
-
-
-
-    print(f"Copying clip-level features from: {feat_root}")
-
-    print(f"Saving clip features to: {out_root}")
-
-
+    print("Preparing clip-level features into:", out_feat_root)
 
     for clip_uid in tqdm.tqdm(sorted(all_clip_uids), desc="Linking features"):
 
         src = feat_root / f"{clip_uid}.pt"
 
-        dst = out_root / f"{clip_uid}.pt"
-
-
-
         if not src.exists():
 
-            raise FileNotFoundError(f"Missing feature for clip_uid: {clip_uid} at {src}")
+            # Should not happen because we filtered, but keep it robust
+
+            continue
 
 
+
+        dst = out_feat_root / f"{clip_uid}.pt"
 
         if dst.exists():
 
@@ -134,29 +184,33 @@ def main(args):
 
         else:
 
-            # copy tensor (safe but slower)
-
             x = torch.load(src, map_location="cpu")
 
             torch.save(x, dst)
 
 
 
-        # read shape once (cheap if symlink, still loads)
+        # record shape
 
         x = torch.load(src, map_location="cpu")
 
-        feature_sizes[clip_uid] = x.shape[0]
+        feature_sizes[clip_uid] = int(x.shape[0])
 
 
 
-    with open(out_root / "feature_shapes.json", "w") as f:
+    shapes_path = out_feat_root / "feature_shapes.json"
+
+    with open(shapes_path, "w") as f:
 
         json.dump(feature_sizes, f)
 
 
 
-    print("Done. feature_shapes.json written.")
+    print("Done.")
+
+    print("Wrote feature shapes:", shapes_path)
+
+    print("Total clips linked:", len(feature_sizes))
 
 
 
@@ -172,18 +226,18 @@ if __name__ == "__main__":
 
     p.add_argument("--output_save_path", required=True)
 
-    # For EgoVLP this is actually the clip-level feature dir
+    # For EgoVLP this is the clip-level feature dir (clip_uid.pt)
 
     p.add_argument("--video_feature_read_path", required=True)
 
     p.add_argument("--clip_feature_save_path", required=True)
 
-    p.add_argument("--symlink", action="store_true", help="Symlink instead of copying")
+    p.add_argument("--symlink", action="store_true")
 
 
 
-    a = vars(p.parse_args())
+    args = vars(p.parse_args())
 
-    main(a)
+    main(args)
 
 
