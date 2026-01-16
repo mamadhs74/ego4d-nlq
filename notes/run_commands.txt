@@ -1,0 +1,43 @@
+
+Environment:
+
+- micromamba env ego4d (Python 3.10)
+
+- protobuf pinned to 3.20.3 due to tensorboard incompatibility
+
+
+
+Data:
+
+- Ego4D v2 NLQ annotations:
+
+  ~/ego4d_data/v2/annotations/nlq_train.json
+
+  ~/ego4d_data/v2/annotations/nlq_val.json
+
+- EgoVLP NLQ features (clip_uid.pt, 256-d):
+
+  ~/ego4d_assets/egovlp/nlq_features/clean/features
+
+
+
+Prep:
+
+python utils/prepare_ego4d_dataset_egovlp.py --input_train_split ... --input_val_split ... --output_save_path data/dataset/nlq_egovlp --video_feature_read_path ... --clip_feature_save_path data/features/nlq_egovlp/official --symlink
+
+Symlink required for VSLNet expected path:
+
+ln -s official data/features/nlq_egovlp/new
+
+
+
+Training (CPU, 2 epochs):
+
+CUDA_VISIBLE_DEVICES= python main.py --task nlq_egovlp --predictor bert --dim 128 --mode train --video_feature_dim 256 --max_pos_len 128 --epochs 2 --fv new --num_workers 4 --model_dir checkpoints_cpu/ --eval_gt_json ~/ego4d_data/v2/annotations/nlq_val.json --log_to_tensorboard egovlp_frozen_cpu
+
+
+
+Eval:
+
+python utils/evaluate_ego4d_nlq.py --ground_truth_json ~/ego4d_data/v2/annotations/nlq_val.json --model_prediction_json checkpoints_cpu/.../vslnet_1_734_preds.json --thresholds 0.3 0.5 --topK 1 3 5 | tee results_egovlp_frozen_cpu_eval.txt
+
