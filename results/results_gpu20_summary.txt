@@ -1,0 +1,9 @@
+Reading predictions: checkpoints_gpu_20e/vslnet_nlq_egovlp_new_128_bert/model/vslnet_15_5872_preds.json
+Reading gt: /home/moho1597/ego4d_data/v2/annotations/nlq_val.json
+Evaluated: 3983 / 4554 instances
++----------+----------+----------+----------+----------+----------+------+
+|  Rank@1  |  Rank@1  |  Rank@3  |  Rank@3  |  Rank@5  |  Rank@5  | mIoU |
+| mIoU@0.3 | mIoU@0.5 | mIoU@0.3 | mIoU@0.5 | mIoU@0.3 | mIoU@0.5 |      |
++----------+----------+----------+----------+----------+----------+------+
+|   2.36   |   1.10   |   5.40   |   2.74   |   7.28   |   4.07   | 2.92 |
++----------+----------+----------+----------+----------+----------+------+
