@@ -1,0 +1,33 @@
+
+EgoVLP NLQ feature overlap with Ego4D v2 NLQ:
+
+
+
+Available EgoVLP clip feature files: 1326
+
+
+
+Train:
+
+- kept clips: 998
+
+- dropped clips (no features): 273
+
+- instances after filter: 11740
+
+
+
+Val:
+
+- kept clips: 328
+
+- dropped clips (no features): 87
+
+- instances after filter: 3983
+
+
+
+Features linked into VSLNet: 1326
+
+feature_shapes.json created.
+
