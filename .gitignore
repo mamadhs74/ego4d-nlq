@@ -1,3 +1,7 @@
 
 # local/generated
 /data/features/
+
+# python cache
+__pycache__/
+*.pyc
