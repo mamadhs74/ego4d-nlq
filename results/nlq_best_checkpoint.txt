@@ -1,0 +1,15 @@
+
+Best NLQ checkpoint (GPU-20e sweep):
+
+- checkpoint id: 5872
+
+- source: checkpoints_gpu_20e/vslnet_nlq_egovlp_new_128_bert/model/
+
+- key files:
+
+  - vslnet_5872.t7
+
+  - vslnet_5872_test_result.json
+
+  - vslnet_5872_test_official.json
+
