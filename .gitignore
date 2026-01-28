@@ -10,3 +10,20 @@ __pycache__/
 __pycache__/
 scripts/__pycache__/
 official/
+
+
+
+# big data (never commit)
+
+ego4d_data/
+
+ego4d_assets/features/
+
+*.mp4
+
+*.pt
+
+*.npy
+
+*.lmdb
+
