@@ -27,3 +27,7 @@ ego4d_assets/features/
 
 *.lmdb
 
+
+# junk
+__pycache__/
+scripts/__pycache__/
