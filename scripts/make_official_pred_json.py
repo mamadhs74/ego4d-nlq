@@ -1,110 +1,65 @@
+#!/usr/bin/env python3
+import argparse, json, os
 
-import json
+def load_preds(path):
+    with open(path, "r") as f:
+        d = json.load(f)
 
-from pathlib import Path
+    # common shapes:
+    # 1) {"results":[...]}
+    # 2) [...] (list)
+    # 3) {"predictions":[...]} / {"preds":[...]}
+    if isinstance(d, dict):
+        for k in ["results", "predictions", "preds"]:
+            if k in d and isinstance(d[k], list):
+                return d[k]
+    if isinstance(d, list):
+        return d
+    raise ValueError(f"Unrecognized prediction JSON structure in {path}: type={type(d)} keys={list(d.keys()) if isinstance(d, dict) else None}")
 
+def to_official(items):
+    out = []
+    for it in items:
+        # Be tolerant to key names
+        clip_uid = it.get("clip_uid") or it.get("clip_id")
+        ann_uid  = it.get("annotation_uid") or it.get("annotation_id")
+        qidx     = it.get("query_idx") if "query_idx" in it else it.get("query_index", 0)
 
+        # VSLNet-style sometimes uses "predicted_times" already
+        times = it.get("predicted_times") or it.get("pred_times") or it.get("predictions")
 
-gt_path = "/home/moho1597/ego4d_data/v2/annotations/nlq_val.json"
-
-out_path = "/home/moho1597/ego4d_data/official_nlq_val_pred_middle20.json"
-
-
-
-with open(gt_path, "r") as f:
-
-    gt = json.load(f)
-
-
-
-results = []
-
-count = 0
-
-
-
-for video in gt["videos"]:
-
-    for clip in video["clips"]:
-
-        clip_uid = clip["clip_uid"]
-
-
-
-        # Clip-level time span (used only to define a baseline window)
-
-        clip_start = clip.get("clip_start_sec", 0.0)
-
-        clip_end = clip.get("clip_end_sec", None)
-
-        if clip_end is None:
-
-            # fall back: if missing, skip
-
+        if clip_uid is None or ann_uid is None or times is None:
             continue
 
+        out.append({
+            "clip_uid": clip_uid,
+            "annotation_uid": ann_uid,
+            "query_idx": int(qidx),
+            "predicted_times": times,
+        })
+    return out
 
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pred_path", required=True, help="Input model predictions (e.g., vslnet_XXXX_test_result.json)")
+    ap.add_argument("--out_path", required=True, help="Output official-format JSON")
+    ap.add_argument("--version", default="1.0")
+    args = ap.parse_args()
 
-        clip_len = max(0.0, clip_end - clip_start)
+    items = load_preds(args.pred_path)
+    results = to_official(items)
 
-        pred_start = clip_start + 0.4 * clip_len
+    payload = {"version": args.version, "results": results}
 
-        pred_end   = clip_start + 0.6 * clip_len
+    os.makedirs(os.path.dirname(os.path.abspath(args.out_path)), exist_ok=True)
+    with open(args.out_path, "w") as f:
+        json.dump(payload, f)
 
+    print(f"Wrote: {args.out_path}")
+    print(f"Total predictions: {len(results)}")
+    if results:
+        print("Example item:", results[0])
 
+if __name__ == "__main__":
+    main()
 
-        # Provide 3 identical windows because evaluator uses top-3 mean IoU
-
-        pred_times = [[pred_start, pred_end], [pred_start, pred_end], [pred_start, pred_end]]
-
-
-
-        for ann in clip["annotations"]:
-
-            ann_uid = ann["annotation_uid"]
-
-            lqs = ann.get("language_queries", [])
-
-            for q_idx in range(len(lqs)):
-
-                results.append({
-
-                    "clip_uid": clip_uid,
-
-                    "annotation_uid": ann_uid,
-
-                    "query_idx": q_idx,
-
-                    "predicted_times": pred_times
-
-                })
-
-                count += 1
-
-
-
-pred = {
-
-    "version": "1.0",
-
-    "challenge": "ego4d_nlq_challenge",
-
-    "results": results
-
-}
-
-
-
-Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-
-with open(out_path, "w") as f:
-
-    json.dump(pred, f)
-
-
-
-print("Wrote:", out_path)
-
-print("Total predictions:", count)
-
-print("Example item:", results[0])
